@@ -2,110 +2,15 @@ import express from "express";
 import Post from "../Models/Post.js";
 import Comment from "../Models/Comments.js";
 import authMiddleware from "../Middleware/authMiddleware.js";
+import { deleteComment, getComment, postComment } from "../Controllers/commentsControllers.js";
 
 const router = express.Router();
 
-router.post("/:postId/comments", authMiddleware, async (req, res) => {
-  try {
-    const { postId } = req.params;
-    const { content } = req.body;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({
-        message: "Comment content is required",
-      });
-    }
-
-    if (content.length > 300) {
-      return res.status(400).json({
-        message: "Comment cannot exceed 300 characters",
-      });
-    }
-
-    const post = await Post.findById(postId);
-
-    if (!post) {
-      return res.status(404).json({
-        message: "Post not found",
-      });
-    }
-
-    const comment = await Comment.create({
-      content,
-      author: req.userId,
-      post: postId,
-    });
-
-    return res.status(201).json({
-      message: "Comment added successfully",
-      comment,
-    });
-  } catch (error) {
-    console.log(error);
-
-    return res.status(500).json({
-      message: "Server error",
-    });
-  }
-});
-
-router.get("/:postId/comments", async (req, res) => {
-  try {
-    const { postId } = req.params;
-
-    const comments = await Comment.find({ post: postId })
-      .populate("author", "name email")
-      .sort({ createdAt: -1 });
-
-    return res.status(200).json({
-      comments,
-    });
-  } catch (error) {
-    console.log(error);
-
-    return res.status(500).json({
-      message: "Server error",
-    });
-  }
-});
-
-router.delete(
-  "/api/posts/:postId/comments/:commentId",
-  authMiddleware,
-  async (req, res) => {
-    try {
-      const { postId, commentId } = req.params;
-
-      const comment = await Comment.findOne({
-        _id: commentId,
-        post: postId,
-      });
-
-      if (!comment) {
-        return res.status(404).json({
-          message: "Comment not found",
-        });
-      }
-
-      if (comment.author.toString() !== req.userId.toString()) {
-        return res.status(403).json({
-          message: "You can only delete your own comment",
-        });
-      }
-
-      await Comment.findByIdAndDelete(commentId);
-
-      return res.status(200).json({
-        message: "Comment deleted successfully",
-      });
-    } catch (error) {
-      console.log(error);
-
-      return res.status(500).json({
-        message: "Server error",
-      });
-    }
-  },
+router.post("/:postId/comments", authMiddleware, postComment);
+router.get("/:postId/comments",getComment );
+router.delete("/:postId/comments/:commentId",
+authMiddleware,
+ deleteComment
 );
 
 export default router;
