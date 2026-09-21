@@ -10,6 +10,7 @@ import postRoutes from "./Routes/postRoutes.js";
 import authRoutes from "./Routes/authRoutes.js";
 import commentRoutes from "./Routes/commentsRoutes.js";
 import userRoutes from "./Routes/userRoutes.js";
+import notificationRoutes from "./Routes/notificationRoutes.js";
 import dotenv from "dotenv";
 
 dotenv.config(); 
@@ -26,6 +27,7 @@ app.use(express.json());
   app.use("/api/auth", authRoutes);
   app.use("/api/posts", commentRoutes);
   app.use("/api", userRoutes);
+  app,use("/api/notification", notificationRoutes)
 
   app.use(errorMiddleware)
 

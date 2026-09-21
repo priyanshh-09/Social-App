@@ -1,6 +1,8 @@
 import Comment from "../Models/Comments.js";
 import Post from "../Models/Post.js";
 import AppError from "../Utils/AppError.js";
+import User from "../Models/User.js";
+import Notification from "../Models/Notification.js"
 
 const createPost = async (req, res,next) => {
   try {
@@ -202,6 +204,15 @@ const likePost = async (req, res, next) => {
 
     await post.save();
 
+    if (!alreadyLiked && post.author.toString() !== req.userId.toString()) {
+      await Notification.create({
+        recipient: post.author,
+        sender: req.userId,
+        type: "like",
+        post: post._id,
+      });
+    }
+
     return res.status(200).json({
       message: alreadyLiked ? "Post unliked" : "Post liked",
       likesCount: post.likes.length,
@@ -250,5 +261,133 @@ const resharePost = async (req, res, next) => {
   }
 };
 
+const getFeed = async (req, res, next) => {
+  try {
 
-export {createPost,getPost, updatePost, deletePost, likePost, resharePost};
+     const page = parseInt(req.query.page) || 1;
+     const limit = parseInt(req.query.limit) || 10;
+
+     const skip = (page - 1) * limit;
+
+    // 1. Find the logged-in user
+    const currentUser = await User.findById(req.userId);
+
+    if (!currentUser) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    // 2. Get the IDs of people I follow
+    const followingIds = currentUser.following;
+
+    // 3. Add my own ID
+    const feedUserIds = [...followingIds, req.userId];
+
+    // 4. Find posts made by these users
+    const posts = await Post.find({
+      author: { $in: feedUserIds },
+    })
+      .populate("author", "name email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    // 5. Add extra information to every post
+    const postsWithDetails = await Promise.all(
+      posts.map(async (post) => {
+        // Number of likes
+        const likesCount = post.likes.length;
+
+        // Did the logged-in user like this post?
+        const isLiked = post.likes.some(
+          (userId) => userId.toString() === req.userId.toString(),
+        );
+
+        // Get comments for this post
+        const comments = await Comment.find({
+          post: post._id,
+        })
+          .populate("author", "name email")
+          .sort({ createdAt: -1 });
+
+        return {
+          ...post.toObject(),
+          likesCount,
+          isLiked,
+          commentsCount: comments.length,
+          comments,
+        };
+      }),
+    );
+
+    // 6. Send the feed
+    return res.status(200).json({
+      posts: postsWithDetails,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getUserPosts = async (req, res, next) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const posts = await Post.find({
+      author: userId,
+    })
+      .populate("author", "name email")
+      .sort({ createdAt: -1 });
+
+    const postsWithDetails = await Promise.all(
+      posts.map(async (post) => {
+        const likesCount = post.likes.length;
+
+        const isLiked = post.likes.some(
+          (id) => id.toString() === req.userId.toString(),
+        );
+
+        const comments = await Comment.find({
+          post: post._id,
+        })
+          .populate("author", "name email")
+          .sort({ createdAt: -1 });
+
+        return {
+          ...post.toObject(),
+          likesCount,
+          isLiked,
+          commentsCount: comments.length,
+          comments,
+        };
+      }),
+    );
+
+    return res.status(200).json({
+      posts: postsWithDetails,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+export {
+  createPost,
+  getPost,
+  updatePost,
+  deletePost,
+  likePost,
+  resharePost,
+  getFeed,
+  getUserPosts,
+};

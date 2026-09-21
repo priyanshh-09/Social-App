@@ -1,6 +1,7 @@
 
 import Post from "../Models/Post.js";
 import Comment from "../Models/Comments.js";
+import Notification from "../Models/Notification.js";
 
 
 const postComment = async (req, res, next) => {
@@ -29,12 +30,22 @@ const postComment = async (req, res, next) => {
     }
 
     const comment = await Comment.create({
-      content,
-      author: req.userId,
-      post: postId,
-    });
+    content,
+    author: req.userId,
+    post: postId,
+});
 
-    return res.status(201).json({
+if (post.author.toString() !== req.userId.toString()) {
+    await Notification.create({
+        recipient: post.author,
+        sender: req.userId,
+        type: "comment",
+        post: post._id,
+        comment: comment._id
+    });
+}
+
+return res.status(201).json({
       message: "Comment added successfully",
       comment,
     });
