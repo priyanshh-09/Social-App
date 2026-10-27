@@ -2,6 +2,7 @@
 import Post from "../Models/Post.js";
 import Comment from "../Models/Comments.js";
 import Notification from "../Models/Notification.js";
+import { getIO } from "../Utils/socket.js";
 
 
 const postComment = async (req, res, next) => {
@@ -29,11 +30,16 @@ const postComment = async (req, res, next) => {
       });
     }
 
-    const comment = await Comment.create({
-    content,
-    author: req.userId,
-    post: postId,
-});
+   const newComment = await Comment.create({
+     content: content.trim(),
+     author: req.userId,
+     post: postId,
+   });
+
+   const comment = await Comment.findById(newComment._id).populate(
+     "author",
+     "name",
+   );
 
 if (post.author.toString() !== req.userId.toString()) {
     await Notification.create({
@@ -44,6 +50,11 @@ if (post.author.toString() !== req.userId.toString()) {
         comment: comment._id
     });
 }
+
+getIO().emit("newComment", {
+  postId: post._id.toString(),
+  comment,
+});
 
 return res.status(201).json({
       message: "Comment added successfully",

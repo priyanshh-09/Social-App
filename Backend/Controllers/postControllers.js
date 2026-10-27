@@ -1,6 +1,7 @@
 import Comment from "../Models/Comments.js";
 import Post from "../Models/Post.js";
 import AppError from "../Utils/AppError.js";
+import { getIO } from "../Utils/socket.js";
 import User from "../Models/User.js";
 import Notification from "../Models/Notification.js"
 
@@ -203,6 +204,13 @@ const likePost = async (req, res, next) => {
     }
 
     await post.save();
+
+    getIO().to(`user:${post.author}`).emit("postLikesUpdated", {
+      postId: post._id.toString(),
+      likesCount: post.likes.length,
+      isLiked: !alreadyLiked,
+      userId: req.userId.toString(),
+    });
 
     if (!alreadyLiked && post.author.toString() !== req.userId.toString()) {
       await Notification.create({

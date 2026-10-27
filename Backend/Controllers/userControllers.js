@@ -1,7 +1,8 @@
 import User from "../Models/User.js";
 import Post from "../Models/Post.js";
-import {cloudinary,uploadToCloudinary} from "../Utils/cloudinary.js";
+import { cloudinary, uploadToCloudinary } from "../Utils/cloudinary.js";
 import Notification from "../Models/Notification.js";
+import { getIO } from "../Utils/socket.js";
 
 const getProfile = async (req, res, next) => {
   try {
@@ -25,12 +26,19 @@ const getProfile = async (req, res, next) => {
   }
 };
 
-const getProfilePost = async (req, res) => {
+const getProfilePost = async (req, res, next) => {
   try {
     const posts = await Post.find({
       author: req.userId,
     })
       .populate("author", "name email")
+      .populate({
+        path: "comments",
+        populate: {
+          path: "author",
+          select: "name",
+        },
+      })
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -45,29 +53,49 @@ const getProfilePost = async (req, res) => {
   }
 };
 
-const getUser = async (req, res) => {
+const getUserPosts = async (req, res, next) => {
   try {
     const { userId } = req.params;
 
-    const user = await User.findById(userId).select("-password");
-
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found",
-      });
-    }
+    const posts = await Post.find({
+      author: userId,
+    })
+      .populate("author", "name email")
+      .sort({ createdAt: -1 });
 
     return res.status(200).json({
-      user,
+      posts,
     });
   } catch (error) {
     console.log(error);
-     next(error);
-    // return res.status(500).json({
-    //   message: "Server error",
-    // });
+    next(error);
   }
 };
+
+// const getUser = async (req, res, next) => {
+//   try {
+//     const { userId } = req.params;
+
+//     const user = await User.findById(userId).select("-password");
+
+//     if (!user) {
+//       return res.status(404).json({
+//         message: "User not found",
+//       });
+//     }
+
+//     return res.status(200).json({
+//       user,
+//     });
+//   } catch (error) {
+//     console.log(error);
+//      next(error);
+//     // return res.status(500).json({
+//     //   message: "Server error",
+//     // });
+//   }
+// };
+
 
 
 const followUser = async (req, res, next) => {
@@ -94,6 +122,7 @@ const followUser = async (req, res, next) => {
             (id) => id.toString() === targetUserId
         );
 
+        // UNFOLLOW
         if (alreadyFollowing) {
             currentUser.following = currentUser.following.filter(
                 (id) => id.toString() !== targetUserId
@@ -106,31 +135,49 @@ const followUser = async (req, res, next) => {
             await currentUser.save();
             await targetUser.save();
 
+            getIO().to(`user:${targetUserId}`).emit("followersUpdated", {
+              followersCount: targetUser.followers.length,
+              followerId: currentUserId,
+              isFollowing: false,
+            });
+
             return res.status(200).json({
-                message: "User unfollowed"
+                message: "User unfollowed",
+                isFollowing: false,
+                followersCount: targetUser.followers.length
             });
         }
 
+        // FOLLOW
         currentUser.following.push(targetUserId);
         targetUser.followers.push(currentUserId);
 
         await currentUser.save();
         await targetUser.save();
 
+        getIO().to(`user:${targetUserId}`).emit("followersUpdated", {
+          followersCount: targetUser.followers.length,
+          followerId: currentUserId,
+          isFollowing: true,
+        });
+
         await Notification.create({
-          recipient: targetUserId,
-          sender: currentUserId,
-          type: "follow",
+            recipient: targetUserId,
+            sender: currentUserId,
+            type: "follow",
         });
 
         return res.status(200).json({
-            message: "User followed"
+            message: "User followed",
+            isFollowing: true,
+            followersCount: targetUser.followers.length
         });
 
     } catch (error) {
         next(error);
     }
 };
+
 
 const getFollowers = async (req, res, next) => {
   try {
@@ -286,11 +333,12 @@ const getUserProfile = async (req, res, next) => {
 export {
   getProfile,
   getProfilePost,
-  getUser,
+  // getUser,
   followUser,
   getFollowers,
   getFollowing,
   getFollowStatus,
   updateProfile,
   getUserProfile,
+  getUserPosts,
 };
